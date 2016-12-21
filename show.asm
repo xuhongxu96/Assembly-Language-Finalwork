@@ -29,11 +29,13 @@ linenum     DW      1                                   ; 行号
 
 ; 搜索栏
 
-PUBLIC      findline, findstat, findstr, findlen
+PUBLIC      findline, findstat, findstr, findlen, matchn, findmatch
 findstat    DB      0                                   ; 搜索栏是否可见
-findline    DB      " Find Text:", 50 dup(" "), "<< 0       matched "             ; 搜索栏提示
+findline    DB      " Find Text:", 50 dup(" "), "<< "   ; 搜索栏提示
+findmatch   DB      "0       matched "                  ; 搜索匹配
 findstr     DW      60 dup (0)                          ; 搜索缓冲区
-findlen     DB      0                                   ; 搜索缓冲大小
+findlen     DW      0                                   ; 搜索缓冲大小
+matchn      DW      0
 
 ; 屏幕显示控制变量
 

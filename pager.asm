@@ -17,6 +17,7 @@ EXTRN       statatr:BYTE,   scrnatr:BYTE,   sbuffer:WORD,   pbuffer:WORD
 EXTRN       fsize:WORD,     cell:WORD,      statline:BYTE,  linenum:WORD
 EXTRN       rows:WORD,      vidadr:WORD,    cga:BYTE,       findline:BYTE
 EXTRN       findstat:BYTE,  statline_l:WORD,findstr:BYTE,   findlen:WORD
+EXTRN       matchn:WORD,    findmatch:BYTE
 
 .CODE
 PUBLIC      Pager, isEGA, ShowFind, ShowKey
@@ -511,6 +512,8 @@ ShowFind    PROC
             ret
 tofind:
             mov     findlen, 0              ; 重置搜索缓冲
+            mov     matchn, 0
+            call    ShowMatch
             
             ; 初始化搜索栏填充文本
             
@@ -638,10 +641,71 @@ ShowKey     ENDP
 ; 输出：   无   
 
 FindString  PROC
+            
+            mov     matchn, 0
+            mov     ax, fsize
+            mov     bx, findlen
+            sub     ax, bx
+            jb      findfail
+            
+            mov     dx, 0FFFFh
+            
+findnext:   cmp     dx, ax
+            je      findfail
+            inc     dx
+            
+            cld
+            push    es
+            mov     es, sbuffer
+            mov     di, dx
+            mov     si, OFFSET findstr
+            
+            mov     cx, bx
+            repe    cmpsb
+            
+            pop     es
+            
+            jnz     findnext
+            
+            inc     matchn
+            jmp     findnext
+            
+findfail:   
+            call    ShowMatch
 
-            mov     cx, 
+            ret
 
 FindString  ENDP
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; 程序：   ShowMatch
+; 功能：   显示匹配数目
+; 参数：   无
+; 输出：   无   
+
+ShowMatch   PROC
+
+; 调用子程序：BinToStr (matchn, OFFSET findmatch) -> ax
+; 将匹配数目转换为文本，长度存入ax
+            push    es
+            push    ds
+            pop     es
+            push    matchn                  ; 参数1
+            mov     ax, OFFSET findmatch    ; 参数2
+            push    ax
+            call    BinToStr                ; 二进制到文本
+              
+            mov     cx, 7                   ; 匹配数目的空位数
+            sub     cx, ax                  ; 填充空格数cx = 空位数 - 行号文本长度
+            mov     al, " "
+            rep     stosb                   ; 填充空格
+            pop     es
+            ret
+            
+ShowMatch   ENDP
+
+
 
             END
 
