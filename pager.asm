@@ -642,37 +642,36 @@ ShowKey     ENDP
 
 FindString  PROC
             
-            mov     matchn, 0
-            mov     ax, fsize
-            mov     bx, findlen
-            sub     ax, bx
-            jb      findfail
+            mov     matchn, 0               ; 清空匹配数目
             
-            mov     dx, 0FFFFh
+            mov     ax, fsize               ; 原文长度len0
+            mov     bx, findlen             ; 搜索长度len1
+            sub     ax, bx                  ; len0 - len1
+            jb      findend                 ; 搜索长度超过原文，结束
             
-findnext:   cmp     dx, ax
-            je      findfail
-            inc     dx
+            mov     dx, 0FFFFh              ; 初始化计次
             
-            cld
-            push    es
+findnext:   cmp     dx, ax                  
+            je      findend                 ; dx == ax，到头，结束
+            inc     dx                      ; 计次++
+            
+            cld                             ; 正向
+            push    es                      ; 加载原文段
             mov     es, sbuffer
-            mov     di, dx
-            mov     si, OFFSET findstr
+            mov     di, dx                  ; 加载计次（原文偏移）
+            mov     si, OFFSET findstr      ; 搜索偏移
             
-            mov     cx, bx
-            repe    cmpsb
+            mov     cx, bx                  ; 匹配len1次
+            repe    cmpsb                   
             
-            pop     es
+            pop     es                      ; 恢复es
             
-            jnz     findnext
+            jnz     findnext                ; 没匹配到，继续
             
-            inc     matchn
-            jmp     findnext
+            inc     matchn                  ; 匹配到，数目++
+            jmp     findnext                ; 继续
             
-findfail:   
-            call    ShowMatch
-
+findend:    call    ShowMatch               ; 显示匹配数目
             ret
 
 FindString  ENDP
@@ -705,22 +704,4 @@ ShowMatch   PROC
             
 ShowMatch   ENDP
 
-
-
             END
-
-
-
-
-
-
-
-
-
-
-
-
-            
-            
-            
-            

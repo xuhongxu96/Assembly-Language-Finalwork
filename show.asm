@@ -342,26 +342,3 @@ pgdnk:      push    rows
 nonek:      retn
             
             END     start
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
