@@ -39,7 +39,7 @@ matchn      DW      0
 
 ; 屏幕显示控制变量
 
-PUBLIC      cell, rows, columns, vidadr, statatr, scrnatr, cga
+PUBLIC      cell, rows, columns, vidadr, statatr, scrnatr, cga, hltatr, hltline, hltpos
 cell        LABEL   WORD                    ; 屏幕显示单元（字符和配色）
 char        DB      " "                     ; | 字符：初始为空格
 attr        DB      ?                       ; | 属性
@@ -54,11 +54,14 @@ cga         DB      1                       ; CGA标识（默认真）
 vidadr      DW      0B800h                  ; 显示缓冲地址（默认CGA）
 mono        EQU     0B000h                  ; 单色地址
 
-hltatr      EQU     047h                    ; 高亮配色：红底白字
+hltatr      DB      071h                    ; 高亮配色：红底白字
 statatr     DB      030h                    ; 状态栏默认配色：蓝绿底黑字
 bwstat      EQU     070h                    ; 白底黑字配色
 scrnatr     DB      017h                    ; 屏幕默认配色：蓝底白字
 bwscrn      EQU     007h                    ; 黑底白字配色
+
+hltline     DW      0
+hltpos      DW      0
 
 ; 缓冲和文件控制变量
 

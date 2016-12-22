@@ -17,7 +17,8 @@ EXTRN       statatr:BYTE,   scrnatr:BYTE,   sbuffer:WORD,   pbuffer:WORD
 EXTRN       fsize:WORD,     cell:WORD,      statline:BYTE,  linenum:WORD
 EXTRN       rows:WORD,      vidadr:WORD,    cga:BYTE,       findline:BYTE
 EXTRN       findstat:BYTE,  statline_l:WORD,findstr:BYTE,   findlen:WORD
-EXTRN       matchn:WORD,    findmatch:BYTE
+EXTRN       matchn:WORD,    findmatch:BYTE, hltatr:BYTE,    hltline:WORD
+EXTRN       hltpos:WORD
 
 .CODE
 PUBLIC      Pager, isEGA, ShowFind, ShowKey
@@ -46,9 +47,14 @@ Pager       PROC
             jl      backward
             jmp     SHORT show              ; 不滚动，直接显示
             
-backward:   call    GoBack
+; 调用子程序：GoBack (cx - 滚动行数，es:di - 缓冲位置)
+
+backward:   call    GoBack                  ; 向上滚
             jmp     SHORT show
-forward:    call    GoForwd
+
+; 调用子程序：GoForwd (cx - 滚动行数，es:di - 缓冲位置)
+
+forward:    call    GoForwd                 ; 向下滚
 
 ; 显示
 
@@ -511,9 +517,13 @@ ShowFind    PROC
             pop     bp
             ret
 tofind:
-            mov     findlen, 0              ; 重置搜索缓冲
-            mov     matchn, 0
-            call    ShowMatch
+            mov     findlen, 0              ; 重置搜索缓冲长度
+            mov     matchn, 0               ; 匹配数设为0
+            
+; 调用子程序：ShowMatch
+; 在搜索栏显示匹配数目
+
+            call    ShowMatch               ; 显示匹配数
             
             ; 初始化搜索栏填充文本
             
@@ -642,18 +652,22 @@ ShowKey     ENDP
 
 FindString  PROC
             
-            mov     matchn, 0               ; 清空匹配数目
+            mov     matchn, 0 
+            mov     hltline, 1             ; 当前高亮行为1
+            mov     hltpos, -1               ; 当前高亮偏移为0
             
             mov     ax, fsize               ; 原文长度len0
             mov     bx, findlen             ; 搜索长度len1
+            or      bx, bx
+            je      zeroend                 ; 搜索长度为0，结束
             sub     ax, bx                  ; len0 - len1
             jb      findend                 ; 搜索长度超过原文，结束
             
             mov     dx, 0FFFFh              ; 初始化计次
             
-findnext:   cmp     dx, ax                  
-            je      findend                 ; dx == ax，到头，结束
-            inc     dx                      ; 计次++
+findnext:   inc     dx                      ; 计次++
+            cmp     dx, ax                  
+            jg      findend                 ; dx > len0，到头，结束
             
             cld                             ; 正向
             push    es                      ; 加载原文段
@@ -666,14 +680,40 @@ findnext:   cmp     dx, ax
             
             pop     es                      ; 恢复es
             
-            jnz     findnext                ; 没匹配到，继续
+            jz      matched                 ; 匹配到，跳到matched
+
+; 调用子程序：ShowMatch          
+; 未匹配到，更新背景为原配色
+
+            call    RefreshBack
             
-            inc     matchn                  ; 匹配到，数目++
+            jmp     findnext
+            
+matched:    inc     matchn                  ; 匹配到，数目++            
+            mov     dx, di
+            sub     dx, bx
+            
+; 调用子程序：Highlight (bx)
+; 匹配到，更新背景为高亮配色，高亮bx个字符
+            
+            push    bx                      
+            call    Highlight
+            
+            mov     dx, di
+            dec     dx
+            
             jmp     findnext                ; 继续
             
+; 调用子程序：ClearHlt    
+; 还原所有配色
+            
+zeroend:    call    ClearHlt    
+            
+; 调用子程序：ShowMatch
+; 在搜索栏显示匹配数目
+  
 findend:    call    ShowMatch               ; 显示匹配数目
             ret
-
 FindString  ENDP
 
 
@@ -703,5 +743,165 @@ ShowMatch   PROC
             ret
             
 ShowMatch   ENDP
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; 程序：   Highlight (len)
+; 功能：   高亮显示
+; 参数：   dx - 位置，栈 - 1.长度
+; 输出：   无  
+
+Highlight   PROC
+            push    bp
+            mov     bp, sp
+            
+            push    es
+            push    di
+            push    ax
+            push    bx
+            push    cx
+            push    dx
+            
+            mov     es, sbuffer
+            mov     di, dx                  ; 载入位置
+            dec     di                      ; 回退一个（因为搜索时递增了）
+            mov     al, 13                  
+            cmp     es:[di], al             ; 当前字符是否为换行
+            jne     nonewline2              ; 不是，nonewline
+            inc     hltline                 ; 是，当前高亮行++
+            mov     hltpos, di              ; 记录行首
+            inc     hltpos                  
+            jmp     skipfill2               ; 跳出
+nonewline2:
+            mov     ax, hltline             ; 当前高亮行
+            cmp     ax, linenum             ; 显示的行号
+            jl      skipfill2               ; 没到，跳过
+            sub     ax, linenum             ; 否则，作差
+            inc     ax                      ; 补1
+            cmp     ax, rows                ; 是否超出
+            jge     skipfill2               ; 超出，跳过
+            
+            sub     di, hltpos              ; 行内偏移
+            add     di, di                  ; 偏移*2，变成字节
+            
+            mov     bx, 80 * 2              ; 加上行偏移
+            mul     bl
+            add     di, ax
+            
+            mov     cx, [bp + 4]            ; 参数1，重复高亮次数
+nexthlt:            
+            mov     es, vidadr              ; 屏幕缓冲区
+            mov     ax, es:[di]
+            mov     ah, hltatr              ; 修改配色
+            mov     es:[di], ax
+            
+            add     di, 2                   ; 加俩字节
+            loop    nexthlt
+            
+skipfill2:  pop     dx
+            pop     cx
+            pop     bx      
+            pop     ax
+            pop     di
+            pop     es
+            pop     bp
+            ret     2
+Highlight   ENDP
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; 程序：   RefreshBack
+; 功能：   高亮显示
+; 参数：   dx - 位置
+; 输出：   无  
+
+RefreshBack PROC
+
+            push    es
+            push    di
+            push    ax
+            push    bx
+            push    cx
+            push    dx
+            
+            mov     es, sbuffer
+            mov     di, dx                  ; 载入位置
+            dec     di                      ; 回退一个（因为搜索时递增了）
+            mov     al, 13                 
+            cmp     es:[di], al             ; 当前字符是否为换行
+            jne     nonewline               ; 不是，nonewline
+            inc     hltline                 ; 是，当前高亮行++
+            mov     hltpos, di              ; 记录行首
+            inc     hltpos
+            jmp     skipfill                ; 跳出
+nonewline:
+            mov     ax, hltline             ; 当前高亮行
+            cmp     ax, linenum             ; 显示的行号
+            jl      skipfill                ; 没到，跳过
+            sub     ax, linenum             ; 否则，作差
+            inc     ax                      ; 补1
+            cmp     ax, rows                ; 是否超出
+            jge     skipfill                ; 超出，跳过
+            
+            sub     di, hltpos              ; 行内偏移
+            add     di, di                  ; 偏移*2，变成字节
+            
+            mov     bx, 80 * 2              ; 加上行偏移
+            mul     bl
+            add     di, ax
+            
+            mov     es, vidadr              ; 屏幕缓冲区
+            mov     ax, es:[di]
+            mov     ah, scrnatr             ; 修改配色
+            mov     es:[di], ax
+            
+            
+skipfill:   pop     dx
+            pop     cx
+            pop     bx      
+            pop     ax
+            pop     di
+            pop     es
+            ret
+RefreshBack ENDP
+             
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; 程序：   ClearHlt
+; 功能：   取消高亮显示
+; 参数：   无
+; 输出：   无  
+
+ClearHlt PROC
+
+            push    es
+            push    di
+            push    ax
+            push    bx
+            push    cx
+            push    dx
+            
+            
+            mov     di, 80 * 2              ; 从第二行开始
+            mov     ax, rows                ; 计算总行数
+            sub     ax, 2
+            mov     bx, 80 * 2
+            mul     bl
+            mov     cx, ax                  ; 放在cx，作为循环次数
+            
+nextclear:  mov     es, vidadr              ; 屏幕缓冲区
+            mov     ax, es:[di]
+            mov     ah, scrnatr             ; 修改配色
+            mov     es:[di], ax
+            add     di, 2                   ; 加俩字节
+            loop    nextclear
+            
+            pop     dx
+            pop     cx
+            pop     bx      
+            pop     ax
+            pop     di
+            pop     es
+            ret
+ClearHlt ENDP
 
             END
